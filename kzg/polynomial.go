@@ -1,6 +1,10 @@
 package kzg
 
-import "github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
+import (
+	"math/big"
+
+	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
+)
 
 type Polynomial struct {
 	Coefficients []fr.Element // f(x) = c0 + c1 X + c2 X^2 + ... + cn X^n
@@ -8,7 +12,7 @@ type Polynomial struct {
 
 // Evaluate computes the value of the polynomial at a given point x.
 // F(z) in KZG opening or blob cell value in EIP4844 or Leaf value in verkle tree.
-func (p *Polynomial) Evaluate(x fr.Element) fr.Element {
+func (p *Polynomial) Evaluate2(x fr.Element) fr.Element {
 	result := fr.Element{}
 	result.SetZero()
 
@@ -22,6 +26,19 @@ func (p *Polynomial) Evaluate(x fr.Element) fr.Element {
 		power.Mul(&power, &x)
 	}
 
+	return result
+}
+
+func (p *Polynomial) Evaluate(z *big.Int) *big.Int {
+	result := new(big.Int).SetInt64(0)
+	mod := fr.Modulus()
+
+	for i := len(p.Coefficients) - 1; i >= 0; i-- {
+		result.Mul(result, z)
+		result.Mod(result, mod)
+		result.Add(result, p.Coefficients[i].BigInt(new(big.Int)))
+		result.Mod(result, mod)
+	}
 	return result
 }
 
@@ -59,6 +76,33 @@ func (p *Polynomial) DivideLinear(z fr.Element) *Polynomial {
 		q[i-1].Add(&p.Coefficients[i], &rem)
 		rem.Mul(&q[i-1], &z)
 		rem.Neg(&rem)
+	}
+
+	return &Polynomial{Coefficients: q}
+}
+
+func ComputeQuotient(poly *Polynomial, z, y *big.Int) *Polynomial {
+	n := len(poly.Coefficients)
+	mod := fr.Modulus()
+
+	q := make([]fr.Element, n-1)
+
+	var acc big.Int
+	acc.Set(poly.Coefficients[n-1].BigInt(new(big.Int)))
+
+	for i := n - 2; i >= 0; i-- {
+		q[i].SetBigInt(&acc)
+		acc.Mul(&acc, z)
+		acc.Add(&acc, poly.Coefficients[i].BigInt(new(big.Int)))
+		acc.Mod(&acc, mod)
+	}
+
+	// subtract y at the end (guaranteed zero remainder)
+	acc.Sub(&acc, y)
+	acc.Mod(&acc, mod)
+
+	if acc.Sign() != 0 {
+		panic("non-zero remainder: invalid opening")
 	}
 
 	return &Polynomial{Coefficients: q}

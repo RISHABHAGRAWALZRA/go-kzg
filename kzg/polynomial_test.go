@@ -18,8 +18,8 @@ func TestPolynomialDivision(t *testing.T) {
 	var z fr.Element
 	z.SetUint64(5)
 
-	v := fr.NewElement(39)
-	y := f.Evaluate(z)
+	v := fr.NewElement(38)
+	y := f.Evaluate2(z)
 	log.Println("Result of evaluate", y.Uint64())
 	if !y.Equal(&v) {
 		t.Fatalf("unexpected evaluation result")
